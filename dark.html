@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Reader</title>
+<style>
+:root {
+  --rd-bg: #f5f4f0;
+  --rd-surface: #ffffff;
+  --rd-toolbar: #1a1a1a;
+  --rd-text: #1c1b18;
+  --rd-muted: #6b6a65;
+  --rd-border: rgba(0,0,0,0.1);
+  --rd-page-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  --rd-btn: #e8e7e3;
+  --rd-btn-text: #1c1b18;
+  --rd-btn-hover: #d8d7d3;
+  --rd-drop: rgba(0,0,0,0.06);
+  --rd-canvas-filter: none;
+  --rd-canvas-bg: transparent;
+}
+.dark-mode {
+  --rd-bg: #18181b;
+  --rd-surface: #232327;
+  --rd-toolbar: #111113;
+  --rd-text: #e8e7e3;
+  --rd-muted: #8a8a90;
+  --rd-border: rgba(255,255,255,0.08);
+  --rd-page-shadow: 0 2px 20px rgba(0,0,0,0.5);
+  --rd-btn: #303038;
+  --rd-btn-text: #e8e7e3;
+  --rd-btn-hover: #3e3e48;
+  --rd-drop: rgba(255,255,255,0.03);
+  --rd-canvas-filter: invert(1) hue-rotate(180deg);
+  --rd-canvas-bg: #fff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--rd-bg); transition: background 0.25s; }
+#app { display: flex; flex-direction: column; height: 100vh; }
+#toolbar { background: var(--rd-toolbar); display: flex; align-items: center; gap: 8px; padding: 10px 16px; flex-shrink: 0; }
+#toolbar-left { display: flex; align-items: center; gap: 8px; flex: 1; }
+.tb-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; border-radius: 6px; padding: 6px 10px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: background 0.15s; white-space: nowrap; }
+.tb-btn:hover { background: rgba(255,255,255,0.18); }
+.tb-btn svg { width: 14px; height: 14px; }
+#page-info { color: rgba(255,255,255,0.55); font-size: 13px; padding: 0 4px; }
+#zoom-display { color: rgba(255,255,255,0.55); font-size: 13px; min-width: 42px; text-align: center; }
+#toolbar-right { display: flex; align-items: center; gap: 10px; }
+.toggle-wrap { display: flex; align-items: center; gap: 6px; }
+#dm-toggle { appearance: none; -webkit-appearance: none; width: 36px; height: 20px; background: rgba(255,255,255,0.15); border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; }
+#dm-toggle::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+#dm-toggle:checked { background: #7c6af7; }
+#dm-toggle:checked::after { transform: translateX(16px); }
+#main { flex: 1; display: flex; overflow: hidden; }
+#sidebar { width: 170px; background: var(--rd-surface); border-right: 0.5px solid var(--rd-border); overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; transition: background 0.25s, border-color 0.25s; }
+.thumb { border-radius: 6px; border: 2px solid transparent; overflow: hidden; cursor: pointer; transition: border-color 0.15s; }
+.thumb.active { border-color: #7c6af7; }
+.thumb-inner { background: var(--rd-drop); border-radius: 4px; padding: 8px; display: flex; flex-direction: column; gap: 5px; }
+.thumb-line { height: 5px; border-radius: 3px; background: var(--rd-border); }
+.thumb-line.bold { height: 7px; }
+.thumb-label { font-size: 10px; color: var(--rd-muted); text-align: center; margin-top: 4px; }
+#viewer { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 24px; background: var(--rd-bg); transition: background 0.25s; }
+.page-card { background: var(--rd-surface); border-radius: 8px; box-shadow: var(--rd-page-shadow); width: 100%; max-width: 680px; padding: 12px 12px 16px; transition: background 0.25s, box-shadow 0.25s; }
+.page-num-tag { font-size: 11px; color: var(--rd-muted); text-align: center; margin-bottom: 10px; letter-spacing: 0.04em; }
+.page-canvas-wrap { border-radius: 4px; overflow: hidden; background: var(--rd-canvas-bg); transition: background 0.25s; }
+.page-canvas-wrap canvas { width: 100%; display: block; filter: var(--rd-canvas-filter); transition: filter 0.25s; }
+#drop-zone { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 40px; }
+#drop-zone h3 { font-size: 18px; font-weight: 500; color: var(--rd-text); }
+#drop-zone p { font-size: 14px; color: var(--rd-muted); text-align: center; max-width: 300px; line-height: 1.6; }
+#file-pick { display: none; }
+.pick-btn { background: #7c6af7; color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+.pick-btn:hover { background: #6b59e6; }
+#drag-overlay { border: 2px dashed #7c6af7; border-radius: 8px; background: rgba(124,106,247,0.05); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <div id="toolbar-left">
+      <button class="tb-btn" onclick="goPage(-1)" title="Previous page">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="10 4 6 8 10 12"/></svg>
+        Prev
+      </button>
+      <button class="tb-btn" onclick="goPage(1)" title="Next page">
+        Next
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 4 10 8 6 12"/></svg>
+      </button>
+      <span id="page-info">— / —</span>
+      <span style="width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 4px;"></span>
+      <button class="tb-btn" onclick="zoom(-1)" title="Zoom out">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="15" y2="15"/><line x1="5" y1="7" x2="9" y2="7"/></svg>
+      </button>
+      <span id="zoom-display">100%</span>
+      <button class="tb-btn" onclick="zoom(1)" title="Zoom in">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7" cy="7" r="5"/><line x1="11" y1="11" x2="15" y2="15"/><line x1="7" y1="5" x2="7" y2="9"/><line x1="5" y1="7" x2="9" y2="7"/></svg>
+      </button>
+      <span style="width:1px;height:18px;background:rgba(255,255,255,0.12);margin:0 4px;"></span>
+      <button class="tb-btn" onclick="openFilePicker()" title="Open PDF">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="12" height="11" rx="1.5"/><polyline points="5 3 5 1 11 1 11 3"/><line x1="5" y1="8" x2="11" y2="8"/><line x1="5" y1="11" x2="9" y2="11"/></svg>
+        Open
+      </button>
+      <input type="file" id="file-pick" accept=".pdf" onchange="handleFile(this.files[0])">
+    </div>
+    <div id="toolbar-right">
+      <div class="toggle-wrap">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="rgba(255,255,255,0.5)"><circle cx="8" cy="8" r="3"/><line x1="8" y1="1" x2="8" y2="3" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/><line x1="8" y1="13" x2="8" y2="15" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/><line x1="1" y1="8" x2="3" y2="8" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/><line x1="13" y1="8" x2="15" y2="8" stroke="rgba(255,255,255,0.5)" stroke-width="1.5"/></svg>
+        <input type="checkbox" id="dm-toggle" onchange="toggleDark(this)">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="rgba(255,255,255,0.5)"><path d="M13.5 10.5a6 6 0 1 1-8-8 4.5 4.5 0 0 0 8 8z"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="sidebar" style="display:none;"></div>
+    <div id="viewer">
+      <div id="drop-zone">
+        <svg width="56" height="56" viewBox="0 0 48 48" fill="none" stroke="var(--rd-muted)" stroke-width="1.5">
+          <rect x="10" y="6" width="28" height="36" rx="3"/>
+          <line x1="16" y1="16" x2="32" y2="16"/>
+          <line x1="16" y1="22" x2="32" y2="22"/>
+          <line x1="16" y1="28" x2="24" y2="28"/>
+          <polyline points="28 30 28 38 36 38"/>
+          <line x1="28" y1="38" x2="36" y2="30"/>
+        </svg>
+        <h3>Open a PDF</h3>
+        <p>Drop your PDF file anywhere on the page, or click the button below to choose one</p>
+        <label class="pick-btn" for="file-pick">Choose PDF file</label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+let pdfDoc = null, currentPage = 1, zoomLevel = 100;
+
+const app = document.getElementById('app');
+const viewer = document.getElementById('viewer');
+const sidebar = document.getElementById('sidebar');
+const pageInfo = document.getElementById('page-info');
+const zoomDisplay = document.getElementById('zoom-display');
+
+function toggleDark(cb) {
+  app.classList.toggle('dark-mode', cb.checked);
+  document.body.classList.toggle('dark-mode', cb.checked);
+}
+
+function openFilePicker() {
+  document.getElementById('file-pick').click();
+}
+
+function goPage(delta) {
+  if (!pdfDoc) return;
+  const next = currentPage + delta;
+  if (next < 1 || next > pdfDoc.numPages) return;
+  currentPage = next;
+  scrollToPage(currentPage);
+  updateSidebar();
+  updatePageInfo();
+}
+
+function zoom(delta) {
+  zoomLevel = Math.max(50, Math.min(250, zoomLevel + delta * 20));
+  zoomDisplay.textContent = zoomLevel + '%';
+  if (pdfDoc) renderAllPages();
+}
+
+async function handleFile(file) {
+  if (!file || file.type !== 'application/pdf') {
+    alert('Please select a valid PDF file.');
+    return;
+  }
+  const buf = await file.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  currentPage = 1;
+  viewer.innerHTML = '';
+  sidebar.style.display = 'flex';
+  await renderAllPages();
+  buildSidebar();
+  updatePageInfo();
+}
+
+async function renderAllPages() {
+  viewer.innerHTML = '';
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'page-card';
+    wrapper.id = 'page-' + i;
+    wrapper.style.transform = `scale(${zoomLevel / 100})`;
+    wrapper.style.transformOrigin = 'top center';
+    wrapper.style.marginBottom = zoomLevel > 100 ? ((zoomLevel - 100) * 2) + 'px' : '0';
+
+    const tag = document.createElement('div');
+    tag.className = 'page-num-tag';
+    tag.textContent = 'page ' + i + ' of ' + pdfDoc.numPages;
+    wrapper.appendChild(tag);
+
+    const canvasWrap = document.createElement('div');
+    canvasWrap.className = 'page-canvas-wrap';
+
+    const canvas = document.createElement('canvas');
+    canvasWrap.appendChild(canvas);
+    wrapper.appendChild(canvasWrap);
+    viewer.appendChild(wrapper);
+
+    renderPage(i, canvas);
+  }
+}
+
+async function renderPage(num, canvas) {
+  const page = await pdfDoc.getPage(num);
+  const scale = 1.8;
+  const viewport = page.getViewport({ scale });
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+}
+
+function buildSidebar() {
+  sidebar.innerHTML = '';
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const thumb = document.createElement('div');
+    thumb.className = 'thumb' + (i === 1 ? ' active' : '');
+    thumb.id = 'thumb-' + i;
+    thumb.onclick = () => scrollToPage(i);
+
+    const inner = document.createElement('div');
+    inner.className = 'thumb-inner';
+    for (let j = 0; j < 6; j++) {
+      const line = document.createElement('div');
+      line.className = 'thumb-line' + (j === 0 ? ' bold' : '');
+      line.style.width = (50 + Math.random() * 50) + '%';
+      inner.appendChild(line);
+    }
+    const label = document.createElement('div');
+    label.className = 'thumb-label';
+    label.textContent = 'Page ' + i;
+    thumb.appendChild(inner);
+    thumb.appendChild(label);
+    sidebar.appendChild(thumb);
+  }
+}
+
+function scrollToPage(num) {
+  currentPage = num;
+  const el = document.getElementById('page-' + num);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  updateSidebar();
+  updatePageInfo();
+}
+
+function updateSidebar() {
+  document.querySelectorAll('.thumb').forEach(t => t.classList.remove('active'));
+  const active = document.getElementById('thumb-' + currentPage);
+  if (active) { active.classList.add('active'); active.scrollIntoView({ block: 'nearest' }); }
+}
+
+function updatePageInfo() {
+  if (pdfDoc) pageInfo.textContent = currentPage + ' / ' + pdfDoc.numPages;
+}
+
+// Drag and drop
+document.body.addEventListener('dragover', e => {
+  e.preventDefault();
+  viewer.classList.add('drag-overlay');
+});
+document.body.addEventListener('dragleave', () => {
+  viewer.classList.remove('drag-overlay');
+});
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  viewer.classList.remove('drag-overlay');
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+
+// Scroll tracking
+viewer.addEventListener('scroll', () => {
+  if (!pdfDoc) return;
+  for (let i = 1; i <= pdfDoc.numPages; i++) {
+    const el = document.getElementById('page-' + i);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      const vRect = viewer.getBoundingClientRect();
+      if (rect.top >= vRect.top - 60 && rect.top < vRect.bottom - 60) {
+        if (currentPage !== i) { currentPage = i; updateSidebar(); updatePageInfo(); }
+        break;
+      }
+    }
+  }
+});
+
+// Keyboard nav
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') goPage(1);
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') goPage(-1);
+});
+</script>
+</body>
+</html>
