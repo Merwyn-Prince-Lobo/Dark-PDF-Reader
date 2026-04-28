@@ -25,3 +25,7 @@ A simple HTML page to upload and view PDF files in the browser with a dark mode 
 
 Free to use
 Made With Pain <3
+
+## Upcoming Features
+
+PPTX support
