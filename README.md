@@ -28,4 +28,4 @@ Made With Pain <3
 
 ## Upcoming Features
 
-PPTX support
+PPTX support (testing will be out in half an hour)
